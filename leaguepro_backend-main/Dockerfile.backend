@@ -1,31 +1,24 @@
-# ---------- Build stage ----------
-    FROM maven:3.9.6-eclipse-temurin-21 AS builder
-    WORKDIR /app
-    
-    # Install git to allow repo cloning
-    RUN apt-get update && apt-get install -y git
-    
-    # Clone your backend repo
-    RUN git clone https://github.com/flyingfish032/sportsmainback.git .
-    
-    # Workaround: remove problematic annotationProcessorPaths from pom.xml (missing versions cause build failure)
-    RUN sed -i '/<annotationProcessorPaths>/,/<\/annotationProcessorPaths>/d' pom.xml
-    
-    # Build the Spring Boot artifact
-    RUN --mount=type=cache,target=/root/.m2 mvn -DskipTests clean package
-    
-    # ---------- Run stage (Tomcat) ----------
-    FROM tomcat:10.1-jdk21-temurin
-    
-    # Remove default apps
-    RUN rm -rf /usr/local/tomcat/webapps/*
-    
-    # Deploy WAR built in the builder stage
-    COPY --from=builder /app/target/*.war /usr/local/tomcat/webapps/ROOT.war
-    
-    EXPOSE 8080
-    
-    ENV CATALINA_OPTS=""
-    
-    CMD ["catalina.sh", "run"]
-    
+# Stage 1: Build the app
+FROM eclipse-temurin:21-jdk AS builder
+
+WORKDIR /app
+
+COPY mvnw .          
+COPY .mvn/ .mvn
+COPY pom.xml ./
+COPY src ./src
+
+# Give execute permission for mvnw
+RUN chmod +x mvnw
+
+RUN ./mvnw clean package -DskipTests
+
+# Stage 2: Run the app
+FROM eclipse-temurin:21-jdk
+
+WORKDIR /app
+COPY --from=builder /app/target/*.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "app.jar"]
